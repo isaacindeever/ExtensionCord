@@ -38,29 +38,97 @@ from jira.client import JIRA
 def getBarData(testplan):
     """get bar graph data for a test plan"""
     report_data = []
-    for folder in Folder.objects.filter(parent=Folder.objects.get(name="root")):
-        folder_data = {}
-        annotated_status = {}
-        all_latest_results = Result.objects.filter(latest=True, testplan_testcase_link__testplan=testplan, testplan_testcase_link__testcase__enabled=1, testplan_testcase_link__testcase__in=folder.in_testplan(testplan.id))
-        all_tptc_links = TestplanTestcaseLink.objects.filter(testplan=testplan, testcase__enabled=1, testcase__in=folder.in_testplan(testplan.id))
 
-        if all_latest_results.exists():
-            annotated_status = dict(all_latest_results.values_list('status').annotate(Count('id')))
-            folder_data["notrun"] = all_tptc_links.exclude(pk__in=all_latest_results.values('testplan_testcase_link')).count()
+    #sql fun
+
+    #this gets all the results by folder by status
+    results_by_folder = TestplanTestcaseLink.objects.raw("select tptc.id, count(r.status) as cnt, r.status, tc.folder_id from ecapp_testplantestcaselink tptc left outer join ecapp_result as r on tptc.id = r.testplan_testcase_link_id join ecapp_testcase as tc on tc.id = tptc.testcase_id where tptc.testplan_id = %s and r.latest=1 and tc.enabled=1 group by folder_id, status order by folder_id" % testplan.id)
+
+    #this gets all the test cases in the plan by folder
+    allfolders = TestplanTestcaseLink.objects.raw("select tptc.id, count(tptc.id) as cnt, tc.folder_id, f.name as folder_name, f.parent_id from ecapp_testplantestcaselink as tptc join ecapp_testcase as tc on tptc.testcase_id = tc.id join ecapp_folder as f on f.id = tc.folder_id where tptc.testplan_id = %s and tc.enabled=1 group by tc.folder_id;" % testplan.id)
+
+    #this gets the count of the ones that haven't run by folder
+    notrun = TestplanTestcaseLink.objects.raw("select tptc.id, count(tptc.id) as cnt, tptc.testcase_id, r.status, tc.folder_id from ecapp_testplantestcaselink as tptc left outer join ecapp_result as r on tptc.id = r.testplan_testcase_link_id join ecapp_testcase as tc on tptc.testcase_id = tc.id where r.testplan_testcase_link_id is null and tptc.testplan_id = %s and tc.enabled=1 group by folder_id;" % testplan.id)
+
+    folder_data = {}
+    notrun_dict = {}
+    results_dict = {}
+    #pop on the not-runs
+    for nr in notrun:
+        notrun_dict[nr.folder_id] = nr.cnt
+
+    for r in results_by_folder:
+        if r.folder_id in results_dict:
+            results_dict[r.folder_id][r.status] = r.cnt
         else:
-            folder_data["notrun"] = all_tptc_links.count()
+            results_dict[r.folder_id] = {}
+            results_dict[r.folder_id][r.status] = r.cnt
 
-        for item in dict(Result.STATUS_CHOICES).keys():
-            folder_data[item] = annotated_status.get(item, 0)
+    #here we build the main part of the dictionary
+    for t in allfolders:
+        if t.folder_id not in folder_data:
+            folder_data[t.folder_id] = {}
+            folder_data[t.folder_id]["team"] = t.folder_name
+            folder_data[t.folder_id]["teamoption"] = t.folder_name.replace(" ", "+")
+            folder_data[t.folder_id]["id"] = t.folder_id
+            folder_data[t.folder_id]["parent_id"] = t.parent_id
+            folder_data[t.folder_id]["total"] = t.cnt
+            if t.folder_id in notrun_dict:
+                folder_data[t.folder_id]["notrun"] = notrun_dict[t.folder_id]
+            else:
+                folder_data[t.folder_id]["notrun"] = 0
+        if t.folder_id in results_dict:
+            for r in results_dict[t.folder_id]:
+                folder_data[t.folder_id]["statuses"] = results_dict[t.folder_id]
 
-        folder_data["total"] = sum(folder_data.values())
-        folder_data["actual"] = folder_data["passed"]/float(folder_data["total"] or 1)*100.0
-        folder_data["progress"] = (folder_data["total"] - folder_data["notrun"])/float(folder_data["total"] or 1)*100
+        #this is an excursion off in to folder parent land. Not done yet.
+        parent = Folder.objects.get(id=t.parent_id)
+        while parent.parent != None:
+            #we don't have this folder, so add it to the dict
+            if parent.id not in folder_data:
+                folder_data[parent.id] = {}
+                folder_data[parent.id]["id"] = parent.id
+                folder_data[parent.id]["parent_id"] = parent.parent_id
+                folder_data[parent.id]["team"] = parent.name
+                folder_data[parent.id]["total"] = t.cnt
+                folder_data[parent.id]["notrun"] = folder_data[t.folder_id]["notrun"]
+                folder_data[parent.id]["statuses"] = {}
+                if "statuses" in folder_data[t.folder_id]:
+                    for s in folder_data[t.folder_id]["statuses"]:
+                        folder_data[parent.id]["statuses"][s] = folder_data[t.folder_id]["statuses"][s]
+            #we do have this folder, so let's add the child folder's data to it
+            else:
+                folder_data[parent.id]["total"] += t.cnt
+                folder_data[parent.id]["notrun"] += folder_data[t.folder_id]["notrun"]
+                if "statuses" not in folder_data[parent.id]:
+                    folder_data[parent.id]["statuses"] = {}
+                if "statuses" in folder_data[t.folder_id]:
+                    for s in folder_data[t.folder_id]["statuses"]:
+                        if s in folder_data[parent.id]["statuses"]:
+                            folder_data[parent.id]["statuses"][s] += folder_data[t.folder_id]["statuses"][s]
+                        else:
+                            folder_data[parent.id]["statuses"][s] = folder_data[t.folder_id]["statuses"][s]
+                
+            parent = Folder.objects.get(id=parent.parent.id)
 
-        if folder_data["total"] > 0:
-            folder_data["team"] = folder.name
-            folder_data["teamoption"] = folder.name.replace(" ", "+")
-            report_data.append(folder_data)
+    for f in folder_data:
+        if "statuses" in folder_data[f]:
+            if "passed" in folder_data[f]["statuses"]:
+                folder_data[f]["actual"] = folder_data[f]["statuses"]["passed"]/float(folder_data[f]["total"] or 1)*100.0
+            else:
+                folder_data[f]["actual"] = 0
+        else:
+            folder_data[f]["actual"] = 0
+            
+        if "notrun" in folder_data[f]:
+            folder_data[f]["progress"] = (folder_data[f]["total"] - folder_data[f]["notrun"])/float(folder_data[f]["total"] or 1)*100
+        else:
+            folder_data[f]["progress"] = 100
+
+
+    #this is for backward compatibility with the template code. will go away eventually.
+    for f in folder_data:
+        report_data.append(folder_data[f])
 
     return report_data
 

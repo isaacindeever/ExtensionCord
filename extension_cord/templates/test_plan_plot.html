@@ -85,7 +85,7 @@
     <h4>Progress Report</h4>
     <table class="table table-bordered compact">
       <thead>
-        <th>Team</th>
+        <th>Team</th>        
         <th>Passed</th>
         <th>Failed</th>
         <th>N/A</th>
@@ -99,19 +99,21 @@
       </thead>
       <tbody>
         {% for row in report_data %}
-        <tr>
+        {% if row.parent_id == 2 %}
+          <tr>
             <td>{{ row.team }}</td>
-            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=passed&asproduct={{row.teamoption}}">{{ row.passed }}</a></td>
-            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=failed&asproduct={{row.teamoption}}">{{ row.failed }}</a></td>
-            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=na&asproduct={{row.teamoption}}">{{ row.na }}</a></td>
-            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=blocked&asproduct={{row.teamoption}}">{{ row.blocked }}</a></td>
-            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=future&asproduct={{row.teamoption}}">{{ row.future }}</a></td>
-            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=notcomplet&asproduct={{row.teamoption}}">{{ row.notcomplet }}</a></td>
-            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=notrun&asproduct={{row.teamoption}}">{{ row.notrun }}</a></td>
-          <td>{{ row.total }}</td>
-          <td>{{ row.actual|floatformat:2 }}% </td>
-          <td>{{ row.progress|floatformat:2 }}% </td>
-        </tr>
+            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=failed&asproduct={{row.team}}">{{ row.statuses.passed }}</a></td>
+            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=failed&asproduct={{row.team}}">{{ row.statuses.failed }}</a></td>
+            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=na&asproduct={{row.team}}">{{ row.statuses.na }}</a></td>
+            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=blocked&asproduct={{row.team}}">{{ row.statuses.blocked }}</a></td>
+            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=future&asproduct={{row.team}}">{{ row.statuses.future }}</a></td>
+            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=notcomplet&asproduct={{row.team}}">{{ row.statuses.notcomplet }}</a></td>
+            <td><a href="{% url plan_add_results testplan.id %}?search=true&asstatus=notrun&asproduct={{row.team}}">{{ row.notrun }}</a></td>
+            <td>{{ row.total }}</td>
+            <td>{{ row.actual|floatformat:2 }}% </td>
+            <td>{{ row.progress|floatformat:2 }}% </td>
+          </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -131,6 +133,10 @@
 <script type="text/javascript" src="/static/3p/jqplot.pointLabels.min.js"></script>
 <script type="text/javascript" src="/static/3p/jqplot.highlighter.min.js"></script>
 <link rel="stylesheet" type="text/css" href="/static/3p/jquery.jqplot.min.css" />
+<script type="text/javascript" src="/static/3p/jquery-treetable/jquery.treetable.js"></script>
+<link rel="stylesheet" type="text/css" href="/static/3p/jquery-treetable/jquery.treetable.css" />
+<link rel="stylesheet" type="text/css" href="/static/3p/jquery-treetable/jquery.treetable.theme.default.css" />
+
 <!-- end jq plot -->
 
 <script type="text/javascript">
